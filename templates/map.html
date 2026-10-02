@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Route fuel planner</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1b1f24;
+      --muted: #5c6770;
+      --line: #d8dee4;
+      --bg: #f4f6f8;
+      --card: #fff;
+      --accent: #1f4e79;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font: 15px/1.45 "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+    .layout { display: grid; grid-template-columns: 360px 1fr; height: 100%; }
+    aside { background: var(--card); border-right: 1px solid var(--line); padding: 20px; overflow: auto; }
+    h1 { font-size: 1.15rem; margin: 0 0 4px; }
+    p.lead { margin: 0 0 16px; color: var(--muted); font-size: 0.92rem; }
+    label { display: block; font-size: 0.78rem; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); margin: 10px 0 4px; }
+    input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+    button { margin-top: 14px; width: 100%; background: var(--accent); color: #fff; border: 0; padding: 10px; border-radius: 4px; font: inherit; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; }
+    .stat { border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+    .stat span { display: block; color: var(--muted); font-size: 0.75rem; }
+    .stat strong { font-size: 1.05rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+    #map { height: 100%; }
+    .error { color: #8b1e1e; margin-top: 12px; font-size: 0.9rem; }
+    @media (max-width: 840px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: auto 55vh; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <h1>Route fuel planner</h1>
+      <p class="lead">Cost-optimal truck-stop fills for a 500-mile range, 10 mpg vehicle.</p>
+      <form id="plan-form">
+        <label for="start">Start</label>
+        <input id="start" name="start" value="Dallas, TX" required>
+        <label for="finish">Finish</label>
+        <input id="finish" name="finish" value="Chicago, IL" required>
+        <button type="submit" id="submit">Plan route</button>
+      </form>
+      <div id="error" class="error" hidden></div>
+      <div id="results" hidden>
+        <div class="stats">
+          <div class="stat"><span>Distance</span><strong id="distance"></strong></div>
+          <div class="stat"><span>Fuel cost</span><strong id="cost"></strong></div>
+          <div class="stat"><span>Gallons used</span><strong id="gallons"></strong></div>
+          <div class="stat"><span>Stops</span><strong id="stop-count"></strong></div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>#</th><th>Stop</th><th>$/gal</th></tr>
+          </thead>
+          <tbody id="stops"></tbody>
+        </table>
+      </div>
+    </aside>
+    <div id="map"></div>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map").setView([39.8, -98.5], 4);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles &copy; Esri",
+      maxZoom: 19
+    }).addTo(map);
+    let layer = L.layerGroup().addTo(map);
+
+    const form = document.getElementById("plan-form");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const start = document.getElementById("start").value;
+      const finish = document.getElementById("finish").value;
+      const button = document.getElementById("submit");
+      const error = document.getElementById("error");
+      error.hidden = true;
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/v1/routes/plan/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ start, finish })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || data.error || "Request failed");
+        }
+        render(data);
+      } catch (err) {
+        error.hidden = false;
+        error.textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    function render(data) {
+      document.getElementById("results").hidden = false;
+      document.getElementById("distance").textContent = data.route.distance_miles.toFixed(1) + " mi";
+      document.getElementById("cost").textContent = "$" + data.fuel.total_fuel_cost_usd.toFixed(2);
+      document.getElementById("gallons").textContent = data.fuel.gallons_consumed.toFixed(1);
+      document.getElementById("stop-count").textContent = String(data.fuel.stops.length);
+
+      const body = document.getElementById("stops");
+      body.replaceChildren();
+      for (const stop of data.fuel.stops) {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${stop.sequence}</td><td>${stop.name}<br><span style="color:#5c6770">${stop.city}, ${stop.state}</span></td><td>${stop.retail_price_usd.toFixed(3)}</td>`;
+        body.appendChild(row);
+      }
+
+      layer.clearLayers();
+      const latlngs = data.route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      const line = L.polyline(latlngs, { color: "#1f4e79", weight: 4 }).addTo(layer);
+      L.marker([data.start.latitude, data.start.longitude]).addTo(layer).bindPopup("Start");
+      L.marker([data.finish.latitude, data.finish.longitude]).addTo(layer).bindPopup("Finish");
+      for (const stop of data.fuel.stops) {
+        L.circleMarker([stop.latitude, stop.longitude], {
+          radius: 7,
+          color: "#8b1e1e",
+          fillColor: "#c0392b",
+          fillOpacity: 0.9
+        }).addTo(layer).bindPopup(
+          `${stop.name}<br>${stop.city}, ${stop.state}<br>$${stop.retail_price_usd.toFixed(3)} / gal`
+        );
+      }
+      map.fitBounds(line.getBounds(), { padding: [24, 24] });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "info": {
+    "name": "Route Fuel Optimizer",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "http://127.0.0.1:8000/api/health/", "protocol": "http", "host": ["127", "0", "0", "1"], "port": "8000", "path": ["api", "health", ""] }
+      }
+    },
+    {
+      "name": "Plan route (Dallas to Chicago)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"Chicago, IL\"\n}"
+        },
+        "url": { "raw": "http://127.0.0.1:8000/api/v1/routes/plan/", "protocol": "http", "host": ["127", "0", "0", "1"], "port": "8000", "path": ["api", "v1", "routes", "plan", ""] }
+      }
+    },
+    {
+      "name": "Plan route (Los Angeles to New York)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Los Angeles, CA\",\n  \"finish\": \"New York, NY\"\n}"
+        },
+        "url": { "raw": "http://127.0.0.1:8000/api/v1/routes/plan/", "protocol": "http", "host": ["127", "0", "0", "1"], "port": "8000", "path": ["api", "v1", "routes", "plan", ""] }
+      }
+    }
+  ]
+}
